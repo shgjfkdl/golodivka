@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Трекер интервального голодания</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      background-color: #e6f9f2;
+      color: #333;
+      line-height: 1.6;
+    }
+
+    header {
+      background-color: #4caf50;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .article {
+      background: white;
+      padding: 1.5rem 2rem;
+      border-radius: 15px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      margin-bottom: 2rem;
+      width: 100%;
+    }
+
+    .article h2 {
+      margin-top: 0;
+      color: #2e7d32;
+    }
+
+    .tracker {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 15px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      max-width: 400px;
+      width: 100%;
+      margin-bottom: 2rem;
+    }
+
+    .info-card {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: #f0fff8;
+      border-radius: 10px;
+    }
+
+    button {
+      padding: 0.7rem 1.2rem;
+      margin: 0.5rem;
+      border: none;
+      border-radius: 8px;
+      background-color: #4caf50;
+      color: white;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover:not(:disabled) {
+      background-color: #388e3c;
+    }
+
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+
+    .history-container {
+      display: none;
+      background: white;
+      padding: 1rem;
+      border-radius: 12px;
+      margin-top: 1rem;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    #timer {
+      font-size: 2.5rem;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      margin: 1rem 0;
+      color: #2e7d32;
+    }
+
+    .method-option {
+      padding: 0.5rem;
+      margin: 0.3rem 0;
+      cursor: pointer;
+      border-radius: 5px;
+      transition: background-color 0.2s;
+    }
+
+    .method-option:hover {
+      background-color: #e0f2e9;
+    }
+
+    .method-option.selected {
+      background-color: #c8e6c9;
+      font-weight: bold;
+    }
+
+    @media (max-width: 600px) {
+      .tracker {
+        margin: 1rem;
+      }
+
+      main {
+        padding: 1rem 0.5rem;
+      }
+
+      .article {
+        padding: 1rem 1rem;
+      }
+
+      #timer {
+        font-size: 2rem;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>Трекер интервального голодания</h1>
+  </header>
+  <main>
+    <section class="article">
+      <h2>Что такое интервальное голодание и зачем оно нужно?</h2>
+      <p>
+        Интервальное голодание — это режим питания, при котором периоды еды чередуются с периодами полного отказа от
+        пищи. Этот метод эффективен для снижения веса, улучшения обмена веществ и общего состояния здоровья.
+      </p>
+    </section>
+
+    <div class="tracker">
+      <h3>Выбери метод:</h3>
+      <div id="fastingMethods"></div>
+      <div class="info-card" id="infoCards"></div>
+
+      <h3>Таймер:</h3>
+      <div id="timer">00:00:00</div>
+      <button id="startStopBtn">Начать голодание</button>
+      <button id="saveBtn" disabled>Сохранить сессию</button>
+    </div>
+
+    <button onclick="toggleHistory()">📜 Показать историю</button>
+    <div class="history-container" id="historyContainer">
+      <h3>История:</h3>
+      <ul id="historyList"></ul>
+      <canvas id="progressChart" width="300" height="200"></canvas>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const fastingMethods = [
+      {id: '16-8', title: '16:8', fastingHours: 16, eatingHours: 8},
+      {id: '18-6', title: '18:6', fastingHours: 18, eatingHours: 6},
+      {id: '20-4', title: '20:4', fastingHours: 20, eatingHours: 4}
+    ];
+
+    let selectedMethod = null;
+    let timerRunning = false;
+    let fastingStartTime = null;
+    let remainingTime = 0; // Для обратного отсчета
+    let timerInterval;
+
+    const fastingMethodsContainer = document.getElementById('fastingMethods');
+    const infoCardsContainer = document.getElementById('infoCards');
+    const timerEl = document.getElementById('timer');
+    const startStopBtn = document.getElementById('startStopBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const historyContainer = document.getElementById('historyContainer');
+    const historyList = document.getElementById('historyList');
+
+    function renderMethods() {
+      fastingMethodsContainer.innerHTML = '';
+      fastingMethods.forEach(method => {
+        const div = document.createElement('div');
+        div.className = 'method-option' + (selectedMethod?.id === method.id ? ' selected' : '');
+        div.textContent = method.title;
+        div.onclick = () => {
+          selectedMethod = method;
+          renderMethods();
+          updateInfoCards();
+          saveBtn.disabled = true;
+          resetTimer();
+        };
+        fastingMethodsContainer.appendChild(div);
+      });
+    }
+
+    function updateInfoCards() {
+      if (!selectedMethod) return;
+      infoCardsContainer.innerHTML = `
+        <h4>Выбранный режим: ${selectedMethod.title}</h4>
+        <p><strong>Голодание:</strong> ${selectedMethod.fastingHours} часов</p>
+        <p><strong>Окно питания:</strong> ${selectedMethod.eatingHours} часов</p>
+      `;
+    }
+
+    function resetTimer() {
+      clearInterval(timerInterval);
+      timerRunning = false;
+      remainingTime = selectedMethod ? selectedMethod.fastingHours * 3600 : 0;
+      timerEl.textContent = formatTime(remainingTime);
+      startStopBtn.textContent = 'Начать голодание';
+      saveBtn.disabled = true;
+    }
+
+    function startTimer() {
+      if (!selectedMethod) {
+        alert('Пожалуйста, выбери режим голодания.');
+        return;
+      }
+
+      // Инициализируем оставшееся время только при первом запуске
+      if (remainingTime <= 0) {
+        remainingTime = selectedMethod.fastingHours * 3600;
+      }
+
+      fastingStartTime = Date.now();
+      timerRunning = true;
+      startStopBtn.textContent = 'Остановить';
+      saveBtn.disabled = true;
+
+      timerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - fastingStartTime) / 1000);
+        remainingTime = Math.max(0, selectedMethod.fastingHours * 3600 - elapsed);
+        timerEl.textContent = formatTime(remainingTime);
+
+        // Когда таймер достигает 0
+        if (remainingTime <= 0) {
+          clearInterval(timerInterval);
+          timerRunning = false;
+          startStopBtn.textContent = 'Начать голодание';
+          saveBtn.disabled = false;
+        }
+      }, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(timerInterval);
+      timerRunning = false;
+      startStopBtn.textContent = 'Продолжить';
+      saveBtn.disabled = false;
+    }
+
+    function saveSession() {
+      if (!selectedMethod || remainingTime >= selectedMethod.fastingHours * 3600) return;
+
+      const actualDuration = selectedMethod.fastingHours * 3600 - remainingTime;
+      const history = loadHistory();
+      history.push({
+        method: selectedMethod.id,
+        start: fastingStartTime,
+        duration: actualDuration
+      });
+      saveHistory(history);
+      renderHistory();
+      updateChart();
+      resetTimer();
+    }
+
+    function loadHistory() {
+      return JSON.parse(localStorage.getItem('fastingHistory') || '[]');
+    }
+
+    function saveHistory(history) {
+      localStorage.setItem('fastingHistory', JSON.stringify(history));
+    }
+
+    function renderHistory() {
+      const history = loadHistory();
+      historyList.innerHTML = '';
+      history.slice(-10).reverse().forEach(entry => {
+        const li = document.createElement('li');
+        const method = fastingMethods.find(m => m.id === entry.method)?.title || entry.method;
+        li.textContent = `${new Date(entry.start).toLocaleString()} — ${Math.floor(entry.duration / 60)} мин (${method})`;
+        historyList.appendChild(li);
+      });
+    }
+
+    function updateChart() {
+      const history = loadHistory();
+      const recent = history.slice(-7);
+      const labels = recent.map(s => new Date(s.start).toLocaleDateString());
+      const data = recent.map(s => Math.round(s.duration / 60));
+
+      if (window.progressChart) {
+        window.progressChart.data.labels = labels;
+        window.progressChart.data.datasets[0].data = data;
+        window.progressChart.update();
+      } else {
+        const ctx = document.getElementById('progressChart').getContext('2d');
+        window.progressChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Минуты голодания',
+              data: data,
+              backgroundColor: '#4caf50'
+            }]
+          },
+          options: {
+            scales: {
+              y: {
+                beginAtZero: true
+              }
+            }
+          }
+        });
+      }
+    }
+
+    function formatTime(seconds) {
+      const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
+      const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+      const s = String(seconds % 60).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+
+    function toggleHistory() {
+      historyContainer.style.display = historyContainer.style.display === 'none' ? 'block' : 'none';
+    }
+
+    // Инициализация
+    startStopBtn.onclick = () => timerRunning ? stopTimer() : startTimer();
+    saveBtn.onclick = saveSession;
+    renderMethods();
+    renderHistory();
+    updateChart();
+  </script>
+</body>
+
+</html>
